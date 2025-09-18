@@ -478,7 +478,7 @@ def api_roll():
     return jsonify(state)
 
 
-@app.post("/api/add_player")
+@app.post("/api/add_player", methods=["GET", "POST"])
 def api_add_player():
     game_id = request.args.get("game_id", "default")
     name = (request.json or {}).get("name", "").strip()
