@@ -14,7 +14,7 @@ html_content = """
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ROLLING CUBES - Multiplayer simultaneo</title>
+<title>ROLLING CUBES</title>
 <style>
 .topbar {
   display: flex;
