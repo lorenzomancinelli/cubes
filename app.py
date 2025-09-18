@@ -115,7 +115,7 @@ button:active { transform:translateY(1px); }
 </head>
 <body>
 <main>
-  <h1>ROLLING CUBES (Multiplayer simultaneo)</h1>
+  <h1>ROLLING CUBES</h1>
 <section class="topbar">
   <!-- Prima riga -->
   <div class="row-buttons">
