@@ -313,12 +313,13 @@ async function renderState(state) {
 
   // classifica
   playersGrid.innerHTML = '';
-  (state.players || []).forEach(p => {
+  (state.players || []).forEach((p, i) => {
     const tile = document.createElement('div');
     tile.className = 'player';
-    tile.textContent = `${p}: ${state.scores && state.scores[p] ? state.scores[p] : 0}`;
+    tile.textContent = `${i+1}: ${p} — ${state.scores && state.scores[p] ? state.scores[p] : 0}`;
     playersGrid.appendChild(tile);
   });
+
 
   // feedback / winner
   if (state.winner) {
