@@ -16,6 +16,47 @@ html_content = """
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ROLLING CUBES</title>
 <style>
+.winner-celebration {
+  font-size: 32px;
+  font-weight: 900;
+  color: #fff;
+  background: linear-gradient(90deg, #ff7675, #ffeaa7, #55efc4, #74b9ff);
+  background-size: 400% 400%;
+  padding: 20px;
+  border-radius: 12px;
+  animation: gradientFlow 5s ease infinite, bounce 1s infinite;
+  text-align: center;
+  margin-top: 20px;
+}
+
+@keyframes gradientFlow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+/* coriandoli */
+.confetti {
+  position: fixed;
+  width: 8px;
+  height: 8px;
+  background: red;
+  top: -10px;
+  animation: fall 3s linear forwards;
+}
+
+@keyframes fall {
+  to {
+    transform: translateY(100vh) rotate(360deg);
+    opacity: 0;
+  }
+}
+
 .topbar {
   display: flex;
   flex-direction: column;
@@ -232,9 +273,32 @@ function ensureSlots() {
   for (let i = 0; i < 13; i++) {
     const s = document.createElement('div');
     s.className = 'slot';
+    s.dataset.index = i;
+
+    // permette il dragover (necessario per il drop)
+    s.addEventListener("dragover", (ev) => {
+      ev.preventDefault();
+    });
+
+    // gestisce il drop
+    s.addEventListener("drop", async (ev) => {
+      ev.preventDefault();
+      const dieId = ev.dataTransfer.getData("text/plain");
+      const idx = s.dataset.index;
+      // rimuovi da slot precedente (se già piazzato)
+      await apiPost("/api/remove", { die_id: dieId });
+      // piazza nel nuovo slot
+      await apiPost("/api/place", { die_id: dieId, slot: idx });
+      // aggiorna stato
+      const st = await apiGet("/api/state");
+      renderState(st);
+    });
+
     slotsDiv.appendChild(s);
   }
 }
+
+
 ensureSlots();
 
 // --- Render stato ---
@@ -247,7 +311,7 @@ async function renderState(state) {
     timerSel.value = String(state.timer);
   }
 
-  // classifica: ordinata lato server; mostrata in griglia 6 colonne
+  // classifica
   playersGrid.innerHTML = '';
   (state.players || []).forEach(p => {
     const tile = document.createElement('div');
@@ -258,16 +322,34 @@ async function renderState(state) {
 
   // feedback / winner
   if (state.winner) {
-    feedbackDiv.textContent = `🎉 ${state.winner} ha vinto! 🎉`;
-    feedbackDiv.style.color = 'green';
-    feedbackDiv.style.fontSize = '24px';
-  } else {
-    feedbackDiv.textContent = state.last_feedback || '';
-    feedbackDiv.style.color = '';
-    feedbackDiv.style.fontSize = '';
-  }
+    feedbackDiv.innerHTML = `🎉🎉 <b>${state.winner}</b> ha vinto la partita! 🎉🎉`;
+    feedbackDiv.className = "winner-celebration";
 
-  // timer globale di round (visuale)
+    // suona audio applausi/fanfara
+    const winAudio = document.getElementById("win-sound");
+    if (winAudio) {
+        winAudio.currentTime = 0;
+        winAudio.play().catch(e => console.log("Audio non avviato:", e));
+    }
+    // genera coriandoli
+    for (let i = 0; i < 100; i++) {
+        const confetti = document.createElement("div");
+        confetti.className = "confetti";
+        confetti.style.left = Math.random() * window.innerWidth + "px";
+        confetti.style.background = `hsl(${Math.random()*360}, 100%, 50%)`;
+        confetti.style.animationDuration = (2 + Math.random() * 3) + "s";
+        document.body.appendChild(confetti);
+        setTimeout(() => confetti.remove(), 5000);
+     }
+    } else {
+        feedbackDiv.textContent = state.last_feedback || '';
+        feedbackDiv.className = "feedback";
+        feedbackDiv.style.color = '';
+        feedbackDiv.style.fontSize = '';
+    }
+
+
+  // timer globale
   if (state.round_started_at && state.timer) {
     const started = Date.parse(state.round_started_at);
     const now = Date.now();
@@ -277,22 +359,25 @@ async function renderState(state) {
     timerDisp.textContent = '';
   }
 
-  // pool + i miei slot
+  // svuota pool e slots
   poolDiv.innerHTML = '';
   [...slotsDiv.children].forEach(s => { s.innerHTML = ''; s.classList.remove('filled'); });
 
   const mySlots = (state.personal_slots && PLAYER ? state.personal_slots[PLAYER] : null) || Array(13).fill(null);
 
+  // crea i dadi
   (state.dice_pool || []).forEach(d => {
     const el = document.createElement('div');
     el.className = 'die ' + d.type;
     el.textContent = d.value;
     el.dataset.id = d.id;
+
+    // click toggle
     el.addEventListener('click', async () => {
       if (state.winner) return;
       const current = (state.personal_slots && state.personal_slots[PLAYER]) || Array(13).fill(null);
-      const idx = current.indexOf(d.id);
-      if (idx !== -1) {
+      const idxInSlots = current.indexOf(d.id);
+      if (idxInSlots !== -1) {
         await apiPost('/api/remove', { die_id: d.id });
       } else {
         await apiPost('/api/place', { die_id: d.id });
@@ -300,6 +385,14 @@ async function renderState(state) {
       const st = await apiGet('/api/state');
       renderState(st);
     });
+
+    // drag & drop
+    el.setAttribute("draggable", "true");
+    el.addEventListener("dragstart", (ev) => {
+      ev.dataTransfer.setData("text/plain", d.id);
+    });
+
+    // posiziona il dado nella UI
     const idx = mySlots.indexOf(d.id);
     if (idx !== -1) {
       const s = slotsDiv.children[idx];
@@ -309,6 +402,7 @@ async function renderState(state) {
     }
   });
 }
+
 
 // --- Eventi UI ---
 document.getElementById('btn-new-game').addEventListener('click', () => {
@@ -352,6 +446,9 @@ setInterval(async () => { const st = await apiGet('/api/state'); renderState(st)
 // init
 (async function init(){ renderState(await apiGet('/api/state')); })();
 </script>
+<audio id="win-sound" preload="auto">
+  <source src="https://www.soundjay.com/human/applause-8.mp3" type="audio/mpeg">
+</audio>
 </body>
 </html>
 """
@@ -735,6 +832,7 @@ def api_reset_game():
     fresh = default_game_state(game_id)
     save_game(game_id, fresh)
     return jsonify(fresh)
+
 
 # ---- Avvio locale ----
 if __name__ == "__main__":
