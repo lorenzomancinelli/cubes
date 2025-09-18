@@ -2,171 +2,62 @@ import os
 import json
 import random
 import re
-from datetime import datetime
-from flask import Flask, request, jsonify, render_template_string, send_from_directory
+from datetime import datetime, timezone
+from flask import Flask, request, jsonify, render_template_string
 
 app = Flask(__name__)
 
-# ---- HTML + CSS + JS incorporati ----
+# ---- HTML + CSS + JS incorporati (frontend leggermente adattato per supportare player "locali") ----
 html_content = """
 <!doctype html>
 <html lang="it">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ROLLING CUBES</title>
+<title>ROLLING CUBES - Multiplayer</title>
 <style>
-:root {
-  --bg:#f5f6fa;
-  --box:#fff;
-  --text:#2d3436;
-  --accent:#0984e3;
-}
+/* Stessi stili del tuo progetto originale (omessi qui per brevità) */
+:root { --bg:#f5f6fa; --box:#fff; --text:#2d3436; --accent:#0984e3; }
 * { box-sizing:border-box; }
-body {
-  margin:0;
-  font-family:system-ui,Segoe UI,Roboto,Arial;
-  background:var(--bg);
-  color:var(--text);
-  padding:18px;
-}
+body { margin:0; font-family:system-ui,Segoe UI,Roboto,Arial; background:var(--bg); color:var(--text); padding:18px; }
 main { max-width:1000px; margin:0 auto; }
-.topbar {
-  display:flex;
-  justify-content:space-between;
-  gap:12px;
-  align-items:center;
-  margin-bottom:12px;
-  flex-wrap:wrap;
-}
-.player-controls input { padding:6px 8px; }
-button {
-  background:var(--accent);
-  color:#fff;
-  border:none;
-  padding:8px 10px;
-  border-radius:8px;
-  cursor:pointer;
-  font-weight:1000;
-  margin-right: 10px; /* spazio di 10px tra i bottoni */
-}
-button:active { transform:translateY(1px); }
-.timer-display {
-  min-width:70px;
-  font-weight:700;
-  color:var(--accent);
-  margin-left:6px;
-  text-align:center;
-}
-.status {
-  display:flex;
-  gap:24px;
-  align-items:flex-start;
-  margin-bottom:12px;
-}
-.scoreboard {
-  background:var(--box);
-  padding:8px;
-  border-radius:8px;
-  box-shadow:0 8px 18px rgba(0,0,0,0.06);
-  min-width:220px;
-}
-.scoreboard ul {
-  list-style:none;
-  padding:0;
-  margin:6px 0;
-}
-.scoreboard li {
-  padding:6px 8px;
-  border-radius:6px;
-  margin-bottom:6px;
-  background:#fafafa;
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-}
-#current-player { font-weight:800; color:var(--accent); }
-.dice-pool {
-  display:flex;
-  flex-wrap:wrap;
-  gap:10px;
-  padding:12px;
-  background:var(--box);
-  border-radius:12px;
-  box-shadow:0 6px 18px rgba(0,0,0,0.06);
-}
-.die {
-  width:60px;
-  height:60px;
-  border-radius:10px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-size:26px;
-  font-weight:700;
-  cursor:pointer;
-  box-shadow:0 6px 12px rgba(0,0,0,0.08);
-  border:3px solid transparent;
-}
-.die.pari { background:#74b9ff; color:#2d3436; border-color:#0984e3; }
-.die.dispari { background:#fab1a0; color:#2d3436; border-color:#d63031; }
-.die.op { background:#55efc4; color:#2d3436; border-color:#00b894; }
-.die.uguale { background:#ffeaa7; color:#2d3436; border-color:#fdcb6e; }
-.slots {
-  display:flex;
-  flex-wrap:wrap;
-  gap:8px;
-  padding:12px;
-  background:var(--box);
-  border-radius:12px;
-  box-shadow:0 6px 18px rgba(0,0,0,0.06);
-}
-.slot {
-  width:60px;
-  height:60px;
-  border-radius:10px;
-  background:#dfe6e9;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  border:3px dashed #636e72;
-}
-.slot.filled { border-style:solid; border-color:var(--accent); background:#e6f3ff; }
-.feedback {
-  margin-top:14px;
-  min-height:26px;
-  font-size:18px;
-  font-weight:600;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-}
-.rules {
-  margin-top:18px;
-  padding:12px;
-  background:var(--box);
-  border-radius:10px;
-}
+.topbar{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.player-controls input{padding:6px 8px}
+button{background:var(--accent);color:#fff;border:none;padding:8px 10px;border-radius:8px;cursor:pointer;font-weight:1000;margin-right:10px}
+.timer-display{min-width:70px;font-weight:700;color:var(--accent);margin-left:6px;text-align:center}
+.status{display:flex;gap:24px;align-items:flex-start;margin-bottom:12px}
+.scoreboard{background:var(--box);padding:8px;border-radius:8px;box-shadow:0 8px 18px rgba(0,0,0,0.06);min-width:220px}
+.scoreboard ul{list-style:none;padding:0;margin:6px 0}
+.scoreboard li{padding:6px 8px;border-radius:6px;margin-bottom:6px;background:#fafafa;display:flex;justify-content:space-between;align-items:center}
+#current-player{font-weight:800;color:var(--accent)}
+.dice-pool{display:flex;flex-wrap:wrap;gap:10px;padding:12px;background:var(--box);border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,0.06)}
+.die{width:60px;height:60px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;cursor:pointer;box-shadow:0 6px 12px rgba(0,0,0,0.08);border:3px solid transparent}
+.die.pari{background:#74b9ff;color:#2d3436;border-color:#0984e3}
+.die.dispari{background:#fab1a0;color:#2d3436;border-color:#d63031}
+.die.op{background:#55efc4;color:#2d3436;border-color:#00b894}
+.die.uguale{background:#ffeaa7;color:#2d3436;border-color:#fdcb6e}
+.slots{display:flex;flex-wrap:wrap;gap:8px;padding:12px;background:var(--box);border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,0.06)}
+.slot{width:60px;height:60px;border-radius:10px;background:#dfe6e9;display:flex;align-items:center;justify-content:center;border:3px dashed #636e72}
+.slot.filled{border-style:solid;border-color:var(--accent);background:#e6f3ff}
+.feedback{margin-top:14px;min-height:26px;font-size:18px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.rules{margin-top:18px;padding:12px;background:var(--box);border-radius:10px}
 </style>
 </head>
 <body>
 <main>
-<h1>ROLLING CUBES</h1>
+<h1>ROLLING CUBES (Multiplayer)</h1>
 
 <section class="topbar">
   <div class="player-controls">
     <input id="player-name" placeholder="Nome giocatore" />
-    <button id="btn-add-player">Aggiungi</button>
+    <button id="btn-add-player">Aggiungi / Entra</button>
     <button id="btn-reset">Azzera partita</button>
-
-    </div> <!-- chiusura corretta player-controls -->
+  </div>
 
   <div class="game-controls">
-    <button id="btn-roll">Lancia dadi</button>
-    <button id="btn-verify">Verifica equazione</button>
-
+    <button id="btn-roll">Lancia dadi (inizio turno)</button>
+    <button id="btn-verify">Verifica equazione (usa i TUOI slot)</button>
     <button id="btn-next">Passa turno</button>
-
 
     <label>Timer:
       <select id="timer-select">
@@ -190,12 +81,12 @@ button:active { transform:translateY(1px); }
 </section>
 
 <section class="dice-area">
-  <h2>Dadi (clicca per mettere nello slot; riclicca per rimuovere)</h2>
+  <h2>Dadi (clicca per mettere nello slot; riclicca per rimuovere) — ognuno ha i propri slot locali</h2>
   <div id="dice-pool" class="dice-pool" aria-live="polite"></div>
 </section>
 
 <section class="slots-area">
-  <h2>Slot (13)</h2>
+  <h2>Slot (13) — i TUOI slot (non condivisi)</h2>
   <div id="slots" class="slots"></div>
 </section>
 
@@ -217,20 +108,26 @@ button:active { transform:translateY(1px); }
 </section>
 </main>
 
-
 <script>
 // --- Identificazione partita tramite game_id ---
 let urlParams = new URLSearchParams(location.search);
 let GAME_ID = urlParams.get('game_id') || 'game_' + Math.random().toString(36).substring(2, 8);
 document.getElementById('game-id').textContent = GAME_ID;
 
-// --- Helpers fetch JSON ---
+// --- Player locale salvato in localStorage ---
+let PLAYER = localStorage.getItem('rc_player') || '';
+if(PLAYER) document.getElementById('player-name').value = PLAYER;
+
+// --- Helpers fetch JSON (aggiungiamo player sempre ai param) ---
 async function apiGet(url) {
-  const r = await fetch(`${url}?game_id=${encodeURIComponent(GAME_ID)}`);
+  const sep = url.includes('?') ? '&' : '?';
+  const playerPart = PLAYER ? `&player=${encodeURIComponent(PLAYER)}` : '';
+  const r = await fetch(`${url}?game_id=${encodeURIComponent(GAME_ID)}${playerPart}`);
   return await r.json();
 }
 async function apiPost(url, payload={}) {
-  const r = await fetch(`${url}?game_id=${encodeURIComponent(GAME_ID)}`, {
+  const playerPart = PLAYER ? `&player=${encodeURIComponent(PLAYER)}` : '';
+  const r = await fetch(`${url}?game_id=${encodeURIComponent(GAME_ID)}${playerPart}`, {
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify(payload)
@@ -247,7 +144,7 @@ const feedbackDiv = document.getElementById('feedback');
 const timerSel = document.getElementById('timer-select');
 const timerDisp = document.getElementById('timer-display');
 
-// --- Slot ---
+// --- Slot frontend (semplice render dei 13 slot personali) ---
 function ensureSlots() {
   if(slotsDiv.children.length===13) return;
   slotsDiv.innerHTML='';
@@ -255,6 +152,9 @@ function ensureSlots() {
     const s=document.createElement('div');
     s.className='slot';
     s.dataset.index=i;
+    s.addEventListener('click', async ()=>{
+      // se c'è un dado selezionato (click sul dado) verrà piazzato qui
+    });
     slotsDiv.appendChild(s);
   }
 }
@@ -262,12 +162,12 @@ ensureSlots();
 
 // --- Render stato ---
 async function renderState(state){
-  // giocatori
+  // giocatori e classifica
   playersUl.innerHTML='';
   (state.players||[]).forEach((p,i)=>{
     const li=document.createElement('li');
     const score = state.scores && state.scores[p]?state.scores[p]:0;
-    const turnMark = (i === (state.current_index % (state.players.length||1))) ? ' ← turno':'';
+    const turnMark = (i === (state.current_index % (state.players.length||1))) ? ' ← turno':'');
     li.textContent=`${p}: ${score}${turnMark}`;
     playersUl.appendChild(li);
   });
@@ -276,19 +176,31 @@ async function renderState(state){
   // feedback
   if(state.winner){
     feedbackDiv.textContent=`🎉 ${state.winner} ha vinto la partita! 🎉`;
-    feedbackDiv.style.color='green';
-    feedbackDiv.style.fontSize='24px';
-    feedbackDiv.style.fontWeight='bold';
+    feedbackDiv.style.color='green'; feedbackDiv.style.fontSize='24px'; feedbackDiv.style.fontWeight='bold';
   } else {
     feedbackDiv.textContent = state.last_feedback || '';
-    feedbackDiv.style.color='';
-    feedbackDiv.style.fontSize='';
-    feedbackDiv.style.fontWeight='';
+    feedbackDiv.style.color=''; feedbackDiv.style.fontSize=''; feedbackDiv.style.fontWeight='';
+  }
+
+  // timer: se server ha turn_started_at+timer
+  if(state.turn_started_at){
+    const started = Date.parse(state.turn_started_at);
+    const now = Date.now();
+    const dur = state.timer || parseInt(timerSel.value,10) || 0;
+    const remaining = Math.max(0, Math.ceil((started + dur*1000 - now)/1000));
+    timerDisp.textContent = remaining ? `${remaining}s` : '';
+  } else {
+    timerDisp.textContent = '';
   }
 
   // dadi/pool
   poolDiv.innerHTML='';
-  [...slotsDiv.children].forEach(s=>s.innerHTML='');
+
+  // svuota i 13 slot (visualizzazione personale)
+  [...slotsDiv.children].forEach(s=>{ s.innerHTML=''; s.classList.remove('filled'); });
+
+  const mySlots = (state.personal_slots && state.personal_slots[PLAYER]) || [null]*13;
+
   (state.dice_pool||[]).forEach(d=>{
     const el = document.createElement('div');
     el.className='die '+d.type;
@@ -296,8 +208,10 @@ async function renderState(state){
     el.dataset.id=d.id;
     el.addEventListener('click', async ()=>{
       if(state.winner) return;
-      const isInSlot = d.in_slot!==null && d.in_slot!==undefined;
-      if(isInSlot){
+      // toggle: se nel mio slot -> rimuovi, altrimenti inserisci nel primo libero
+      const mySlotsLocal = (state.personal_slots && state.personal_slots[PLAYER]) || [null]*13;
+      const index = mySlotsLocal.indexOf(d.id);
+      if(index !== -1){
         await apiPost('/api/remove',{die_id:d.id});
       } else {
         await apiPost('/api/place',{die_id:d.id});
@@ -305,11 +219,14 @@ async function renderState(state){
       const st = await apiGet('/api/state');
       renderState(st);
     });
-    if(d.in_slot===null||d.in_slot===undefined){
-      poolDiv.appendChild(el);
+
+    // se il dado è presente nei miei slot, mettilo nella corrispondente UI
+    const idx = mySlots.indexOf(d.id);
+    if(idx !== -1){
+      const s = slotsDiv.children[idx];
+      if(s){ s.appendChild(el); s.classList.add('filled'); }
     } else {
-      const s = slotsDiv.children[d.in_slot];
-      if(s) s.appendChild(el);
+      poolDiv.appendChild(el);
     }
   });
 }
@@ -318,64 +235,27 @@ async function renderState(state){
 document.getElementById('btn-add-player').addEventListener('click', async ()=>{
   const name=document.getElementById('player-name').value.trim();
   if(!name){alert('Inserisci un nome');return;}
+  PLAYER = name;
+  localStorage.setItem('rc_player', PLAYER);
   const st=await apiPost('/api/add_player',{name});
-  document.getElementById('player-name').value='';
   renderState(st);
 });
-
 
 // --- Controlli gioco ---
 document.getElementById('btn-roll').addEventListener('click', async ()=>{renderState(await apiPost('/api/roll'))});
 document.getElementById('btn-verify').addEventListener('click', async ()=>{const res=await apiPost('/api/verify'); if(res.state) renderState(res.state)});
 document.getElementById('btn-reset').addEventListener('click', async ()=>{renderState(await apiPost('/api/reset_game'))});
 
-// --- Timer e cambio turno ---
-let gameRunning = false;
-let remaining = parseInt(timerSel.value,10)||0;
+// --- Timer e cambio turno client-side (basato sullo stato server) ---
 let tickHandle = null;
-
-async function startTurn() {
-  const st = await apiGet('/api/state');
-  if(!st.players || st.players.length===0) return;
-  gameRunning = true;
-
-  // --- Lancia dadi all'inizio turno ---
-  const rolledState = await apiPost('/api/roll');
-  renderState(rolledState);
-
-  // Imposta timer
-  remaining = parseInt(timerSel.value,10) || 0;
-  timerDisp.textContent = remaining ? `${remaining}s` : '';
-
+function startLocalTicker(){
   if(tickHandle) clearInterval(tickHandle);
-  if(remaining > 0){
-    tickHandle = setInterval(async ()=>{
-      remaining--;
-      timerDisp.textContent = `${remaining}s`;
-      if(remaining <= 0){
-        clearInterval(tickHandle);
-        await apiPost('/api/next');
-        const rolledNextState = await apiPost('/api/roll');
-        renderState(rolledNextState);
-        startTurn();
-      }
-    },1000); // correzione da 10000 a 1000 ms
-  }
+  tickHandle = setInterval(async ()=>{
+    const st = await apiGet('/api/state');
+    renderState(st);
+  },1000);
 }
-
-document.addEventListener('DOMContentLoaded', () => {
-    // Bottone "Inizia partita"
-    const btnStart = document.createElement('button');
-    btnStart.textContent = "Inizia partita";
-    btnStart.addEventListener('click', startTurn);
-
-    // Inserisci subito dopo "Aggiungi"
-    const btnAdd = document.getElementById('btn-add-player');
-    if(btnAdd && btnAdd.parentNode){
-        btnAdd.insertAdjacentElement('afterend', btnStart);
-    }
-});
-
+startLocalTicker();
 
 // Bottone "Passa turno"
 document.getElementById('btn-next').addEventListener('click', async ()=>{
@@ -383,157 +263,15 @@ document.getElementById('btn-next').addEventListener('click', async ()=>{
   await apiPost('/api/next');
   const rolledState = await apiPost('/api/roll');
   renderState(rolledState);
-  remaining = parseInt(timerSel.value, 10) || 0;
-  if(remaining>0) startTurn();
+  startLocalTicker();
 });
 
-// Cambio timer manuale
-timerSel.addEventListener('change', ()=>{
-  remaining = parseInt(timerSel.value,10)||0;  // aggiorna solo il valore
-  timerDisp.textContent = remaining ? `${remaining}s` : '';  // aggiorna la visualizzazione
-  // non avviare il countdown automaticamente
-});
-
-// Polling 1s per aggiornamento stato
-setInterval(async ()=>{
-  const st = await apiGet('/api/state');
-  renderState(st);
-},1000);
+// Polling 1s per aggiornamento stato (già avviato dal ticker), ma teniamo anche un fallback
+setInterval(async ()=>{ const st = await apiGet('/api/state'); renderState(st); },3000);
 
 // --- Iniziale ---
-(async function init(){renderState(await apiGet('/api/state'))})();
+(async function init(){ renderState(await apiGet('/api/state')); })();
 </script>
-<script>
-let selectedShelf = null;
-let selectedTrain = null;
-let lastPlayer = 1;
-
-function updateName(playerNum) {
-    const input = document.getElementById(`name${playerNum}`);
-    alert(`Nome Giocatore ${playerNum} aggiornato a: ${input.value}`);
-}
-
-function updateAvatar(playerNum) {
-    const select = document.getElementById(`avatar${playerNum}`);
-    const img = document.getElementById(`avatar_img${playerNum}`);
-    img.src = "/static/" + select.value;
-}
-
-function render() {
-    fetch("/state").then(r => r.json()).then(data => {
-        if (data.current_player !== lastPlayer) {
-            selectedShelf = null;
-            selectedTrain = null;
-            lastPlayer = data.current_player;
-        }
-
-        // aggiorna treno e shelves
-        const trainContainer = document.getElementById("train");
-        trainContainer.innerHTML = "";
-        data.train.forEach((tile, idx) => {
-            const tileDiv = document.createElement("div");
-            tileDiv.className = "tile";
-            ["left","right"].forEach(side=>{
-                const sideDiv = document.createElement("div");
-                sideDiv.className="side";
-                sideDiv.innerText = tile[side];
-                sideDiv.onclick = () => {
-                    selectedTrain={trainIdx:idx, side};
-                    render();
-                    tryPlace();
-                };
-                if (selectedTrain && selectedTrain.trainIdx===idx && selectedTrain.side===side){
-                    sideDiv.classList.add("selected");
-                }
-                tileDiv.appendChild(sideDiv);
-            });
-            trainContainer.appendChild(tileDiv);
-        });
-
-        ["p1_shelf","p2_shelf"].forEach(shelfId=>{
-            const shelfDiv = document.getElementById(shelfId);
-            const shelf = data[shelfId];
-            shelfDiv.innerHTML = "";
-            shelf.forEach((t,i)=>{
-                if(!t) return;
-                const tileDiv = document.createElement("div");
-                tileDiv.className="tile";
-                ["left","right"].forEach(side=>{
-                    const sideDiv = document.createElement("div");
-                    sideDiv.className="side";
-                    sideDiv.innerText = t[side];
-                    if ((shelfId==="p1_shelf" && data.current_player===1) || 
-                        (shelfId==="p2_shelf" && data.current_player===2)){
-                        sideDiv.onclick=()=>{
-                            selectedShelf={shelfId,idx:i,side};
-                            render();
-                            tryPlace();
-                        };
-                    }
-                    if (selectedShelf && selectedShelf.shelfId===shelfId && selectedShelf.idx===i && selectedShelf.side===side){
-                        sideDiv.classList.add("selected");
-                    }
-                    tileDiv.appendChild(sideDiv);
-                });
-                shelfDiv.appendChild(tileDiv);
-            });
-        });
-
-        document.getElementById("score1").innerText = data.scores["1"];
-        document.getElementById("score2").innerText = data.scores["2"];
-        document.getElementById("turn").innerText = "Tocca a: Giocatore " + data.current_player;
-        document.getElementById("timer").innerText = "Timer: " + data.timer + "s";
-
-        const winnerDiv = document.getElementById("success");
-        if(data.winner){
-            const playerName = data.winner===1?document.getElementById("name1").value:document.getElementById("name2").value;
-            winnerDiv.innerHTML = `${playerName} ha vinto la partita! 🎉`;
-            winnerDiv.style.animation = "flash 1s infinite";
-        } else {
-            winnerDiv.innerHTML = "";
-            winnerDiv.style.animation="";
-        }
-    });
-}
-
-function tryPlace(){
-    if(!selectedShelf || !selectedTrain) return;
-    fetch("/place",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify(selectedShelf && selectedTrain ? {
-            shelfId:selectedShelf.shelfId,
-            idx:selectedShelf.idx,
-            shelfSide:selectedShelf.side,
-            trainIdx:selectedTrain.trainIdx,
-            trainSide:selectedTrain.side
-        } : {})
-    })
-    .then(r=>r.json())
-    .then(data=>{
-        if(data.result==="success"){
-            selectedShelf=null;
-            selectedTrain=null;
-        }
-        render();
-    });
-}
-
-document.getElementById("newGameBtn").onclick = ()=>{
-    fetch("/reset",{method:"POST"})
-    .then(r=>r.json())
-    .then(()=>{
-        selectedShelf=null;
-        selectedTrain=null;
-        lastPlayer=1;
-        render();
-    });
-};
-
-render();
-setInterval(render,1000);
-</script>
-
 </body>
 </html>
 """
@@ -548,6 +286,7 @@ def game_path(game_id: str) -> str:
     safe = re.sub(r'[^a-zA-Z0-9_\-]', '_', game_id or 'default')
     return os.path.join(DATA_DIR, f"{safe}.json")
 
+
 def load_game(game_id: str) -> dict:
     path = game_path(game_id)
     if not os.path.exists(path):
@@ -560,33 +299,27 @@ def load_game(game_id: str) -> dict:
                 return default_game_state(game_id)
             return json.loads(data)
     except (json.JSONDecodeError, IOError):
-        # se il JSON è corrotto, restituisci uno stato base ma senza toccare i giocatori
-        return {
-            "game_id": game_id,
-            "created_at": datetime.utcnow().isoformat(),
-            "players": [],
-            "scores": {},
-            "current_index": 0,
-            "timer": 60,
-            "dice_pool": [],
-            "slots": [None]*13,
-            "turn_used_die_ids": [],
-            "last_feedback": "Errore nel file di salvataggio, partita azzerata"
-        }
+        return default_game_state(game_id)
+
 
 def default_game_state(game_id: str) -> dict:
     return {
         "game_id": game_id,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.utcnow().replace(tzinfo=timezone.utc).isoformat(),
         "players": [],
         "scores": {},
         "current_index": 0,
         "timer": 60,
         "dice_pool": [],
-        "slots": [None]*13,
+        "slots": [None]*13,            # campo legacy (non più usato per il gameplay personale)
+        "personal_slots": {},         # mappa player -> lista(13) dei die_id (o None)
         "turn_used_die_ids": [],
-        "last_feedback": "Nuova partita"
+        "last_feedback": "Nuova partita",
+        "turn_started_at": None,
+        "winner": None
     }
+
+
 def save_game(game_id: str, state: dict) -> None:
     path = game_path(game_id)
     with open(path, "w", encoding="utf-8") as f:
@@ -595,6 +328,7 @@ def save_game(game_id: str, state: dict) -> None:
 # ---- Dadi ----
 def new_die_id():
     return f"d{random.randint(10**6, 10**7-1)}"
+
 
 def roll_full_set() -> list:
     evens = [random.choice([0,2,4,6,8]) for _ in range(4)]
@@ -617,21 +351,21 @@ def roll_full_set() -> list:
             "id": new_die_id(),
             "type": tipo,
             "value": str(v),
-            "in_slot": None
         })
     return dice
 
-# ---- Tokenizzazione, regole, punteggio ----
-def tokenize_by_slots(state: dict) -> list:
+# ---- Tokenizzazione, regole, punteggio (adattate per lavorare su slot passati) ----
+
+def tokenize_by_slots_for_list(dice_pool: list, slots_list: list) -> list:
     seq = []
     current_num = ""
-    for dref in state["slots"]:
+    for dref in slots_list:
         if dref is None:
             if current_num != "":
                 seq.append(current_num)
                 current_num = ""
             continue
-        die = next((d for d in state["dice_pool"] if d["id"] == dref), None)
+        die = next((d for d in dice_pool if d["id"] == dref), None)
         if not die:
             if current_num != "":
                 seq.append(current_num)
@@ -648,6 +382,7 @@ def tokenize_by_slots(state: dict) -> list:
     if current_num != "":
         seq.append(current_num)
     return seq
+
 
 def invalid_rules(seq: list) -> str | None:
     if '=' not in seq:
@@ -669,6 +404,7 @@ def invalid_rules(seq: list) -> str | None:
             if right.isdigit() and int(right) == 0:
                 return "Non puoi moltiplicare/dividere per 0"
     return None
+
 
 def safe_eval(expr: str):
     if not re.fullmatch(r'[0-9+\-*/. ]+', expr):
@@ -703,22 +439,41 @@ def compute_score(seq: list, used_ids: set, state: dict) -> int:
 @app.route("/")
 def home():
     return render_template_string(html_content)
+
 # ------ ROTTE API ------
 
 @app.get("/api/state")
 def api_state():
     game_id = request.args.get("game_id", "default")
-    return jsonify(load_game(game_id))
+    player = request.args.get("player")
+    state = load_game(game_id)
+
+    # assicurati che tutti i players abbiano una lista di slot
+    for p in state.get('players', []):
+        if p not in state.get('personal_slots', {}):
+            state.setdefault('personal_slots', {})[p] = [None]*13
+
+    # se è richiesto un player, aggiungi la sua view personalizzata come my_slots
+    view = dict(state)
+    view['my_slots'] = state.get('personal_slots', {}).get(player, [None]*13) if player else [None]*13
+    return jsonify(view)
 
 
 @app.post("/api/roll")
 def api_roll():
     game_id = request.args.get("game_id", "default")
+    player = request.args.get("player")
     state = load_game(game_id)
     state["dice_pool"] = roll_full_set()
-    state["slots"] = [None] * 13
+
+    # svuota tutti gli slot personali quando si rilanciano i dadi (comportamento scelto)
+    state["personal_slots"] = {p: [None]*13 for p in state.get('players', [])}
     state["turn_used_die_ids"] = []
     state["last_feedback"] = "Dadi lanciati"
+
+    # imposta inizio turno (sincronizza il timer del turno per tutti i client)
+    state['turn_started_at'] = datetime.utcnow().replace(tzinfo=timezone.utc).isoformat()
+    # manteniamo lo stato['timer'] come durata del turno
     save_game(game_id, state)
     return jsonify(state)
 
@@ -734,6 +489,7 @@ def api_add_player():
     if name not in state["players"]:
         state["players"].append(name)
         state["scores"][name] = state["scores"].get(name, 0)
+        state.setdefault('personal_slots', {})[name] = [None]*13
     save_game(game_id, state)
     return jsonify(state)
 
@@ -741,55 +497,52 @@ def api_add_player():
 @app.post("/api/place")
 def api_place():
     game_id = request.args.get("game_id", "default")
+    player = request.args.get('player') or (request.json or {}).get('player')
     payload = request.get_json(silent=True) or {}
     die_id = payload.get("die_id")
+    # target_slot è opzionale; se non passato piazzeremo al primo libero del player's slots
     target_slot = payload.get("slot")
 
     if not die_id:
         return jsonify({"error": "die_id richiesto"}), 400
 
     state = load_game(game_id)
+    # ensure player exists
+    if player and player not in state.get('players', []):
+        return jsonify({"error": "Player non registrato"}), 400
 
-    # ---- Sincronizzazione tra slots e dice_pool ----
+    # validità dado
     valid_ids = {d["id"] for d in state.get("dice_pool", [])}
-    for i, ref in enumerate(state["slots"]):
-        if ref is not None and ref not in valid_ids:
-            state["slots"][i] = None
-
-    for d in state["dice_pool"]:
-        s = d.get("in_slot")
-        if s is None:
-            continue
-        if not (isinstance(s, int) and 0 <= s < len(state["slots"]) and state["slots"][s] == d["id"]):
-            d["in_slot"] = None
-
-    # ---- Recupera il dado richiesto ----
-    die = next((d for d in state["dice_pool"] if d["id"] == die_id), None)
-    if not die:
+    if die_id not in valid_ids:
         return jsonify({"error": "Dado non trovato"}), 404
-    if die.get("in_slot") is not None:
-        return jsonify({"error": "Dado già piazzato in uno slot", "state": state}), 400
 
-    # ---- Determina slot di destinazione ----
+    # lavora sui slot personali
+    if not player:
+        return jsonify({"error": "player richiesto per operazioni sui slot personali"}), 400
+    pslots = state.setdefault('personal_slots', {}).setdefault(player, [None]*13)
+
+    # se il dado è già piazzato nei MY slot -> errore
+    if die_id in pslots:
+        return jsonify({"error": "Dado già piazzato nei tuoi slot", "state": state}), 400
+
+    # scegli slot
     if target_slot is not None:
         try:
             idx = int(target_slot)
         except (TypeError, ValueError):
             return jsonify({"error": "slot deve essere un intero tra 0 e 12"}), 400
-        if not (0 <= idx < len(state["slots"])):
+        if not (0 <= idx < len(pslots)):
             return jsonify({"error": "Indice slot fuori range"}), 400
-        if state["slots"][idx] is not None:
+        if pslots[idx] is not None:
             return jsonify({"error": "Slot già occupato"}), 400
     else:
         try:
-            idx = state["slots"].index(None)
+            idx = pslots.index(None)
         except ValueError:
-            return jsonify({"error": "Nessuno slot libero"}), 400
+            return jsonify({"error": "Nessuno slot libero nei tuoi slot"}), 400
 
-    # ---- Applica la mossa ----
-    state["slots"][idx] = die_id
-    die["in_slot"] = idx
-    state["turn_used_die_ids"] = [ref for ref in state["slots"] if ref is not None]
+    pslots[idx] = die_id
+    state['turn_used_die_ids'] = list({ref for p in state.get('personal_slots', {}) for ref in (state['personal_slots'][p] or []) if ref})
     save_game(game_id, state)
     return jsonify(state)
 
@@ -797,19 +550,20 @@ def api_place():
 @app.post("/api/remove")
 def api_remove():
     game_id = request.args.get("game_id", "default")
+    player = request.args.get('player') or (request.json or {}).get('player')
     die_id = (request.json or {}).get("die_id")
     state = load_game(game_id)
 
-    for i, ref in enumerate(state["slots"]):
+    if not player:
+        return jsonify({"error": "player richiesto per operazioni sui slot personali"}), 400
+
+    pslots = state.setdefault('personal_slots', {}).setdefault(player, [None]*13)
+    for i, ref in enumerate(pslots):
         if ref == die_id:
-            state["slots"][i] = None
+            pslots[i] = None
             break
 
-    die = next((d for d in state["dice_pool"] if d["id"] == die_id), None)
-    if die:
-        die["in_slot"] = None
-
-    state["turn_used_die_ids"] = [x for x in state["slots"] if x]
+    state['turn_used_die_ids'] = list({ref for p in state.get('personal_slots', {}) for ref in (state['personal_slots'][p] or []) if ref})
     save_game(game_id, state)
     return jsonify(state)
 
@@ -817,12 +571,17 @@ def api_remove():
 @app.post("/api/verify")
 def api_verify():
     game_id = request.args.get("game_id", "default")
+    player = request.args.get('player') or (request.json or {}).get('player')
     state = load_game(game_id)
 
     if state.get("winner"):
         return jsonify({"ok": False, "message": "Partita terminata", "state": state}), 200
 
-    seq = tokenize_by_slots(state)
+    if not player:
+        return jsonify({"ok": False, "message": "player richiesto per verificare la propria equazione", "state": state}), 400
+
+    pslots = state.get('personal_slots', {}).get(player, [None]*13)
+    seq = tokenize_by_slots_for_list(state.get('dice_pool', []), pslots)
     msg = invalid_rules(seq)
     if msg:
         state["last_feedback"] = f"❌ {msg}"
@@ -856,11 +615,17 @@ def api_verify():
         save_game(game_id, state)
         return jsonify({"ok": False, "message": "Equazione errata", "state": state}), 200
 
-    used_ids = set([x for x in state["slots"] if x is not None])
+    used_ids = set([x for x in pslots if x is not None])
     points = compute_score(seq, used_ids, state)
 
     if state["players"]:
-        cur_name = state["players"][state["current_index"] % len(state["players"])]
+        cur_name = state["players"][state["current_index"] % len(state["players"]) ]
+        # verifichiamo che il player che sta verificando sia effettivamente il giocatore corrente
+        if player != cur_name:
+            state["last_feedback"] = f"❌ Non è il tuo turno ({cur_name} sta giocando)"
+            save_game(game_id, state)
+            return jsonify({"ok": False, "message": "Non è il tuo turno", "state": state}), 200
+
         state["scores"][cur_name] = state["scores"].get(cur_name, 0) + points
 
         if state["scores"][cur_name] > 47:
@@ -873,14 +638,16 @@ def api_verify():
             return jsonify({"ok": True, "points": points, "winner": winner_name, "state": state})
 
     state["last_feedback"] = f"✅ Equazione corretta! +{points} punti"
+    # rilancia dadi globalmente
     state["dice_pool"] = roll_full_set()
-    state["slots"] = [None] * 13
+    # svuota tutti gli slot personali
+    state["personal_slots"] = {p: [None]*13 for p in state.get('players', [])}
     state["turn_used_die_ids"] = []
+    # passa al prossimo giocatore
     if state["players"]:
         state["current_index"] = (state["current_index"] + 1) % len(state["players"])
-        for d in state["dice_pool"]:
-            d["in_slot"] = None
-        state["turn_used_die_ids"] = []
+    # e aggiorna il timer di inizio turno
+    state['turn_started_at'] = datetime.utcnow().replace(tzinfo=timezone.utc).isoformat()
     save_game(game_id, state)
     return jsonify({"ok": True, "points": points, "state": state})
 
@@ -893,11 +660,11 @@ def api_next():
     if state["players"]:
         state["current_index"] = (state["current_index"] + 1) % len(state["players"])
 
-    state["slots"] = [None]*13
-    for d in state["dice_pool"]:
-        d["in_slot"] = None
+    # reset personale (passare turno non altera le slot personali degli altri? qui le azzeriamo per chiarezza)
+    state["personal_slots"] = {p: [None]*13 for p in state.get('players', [])}
     state["turn_used_die_ids"] = []
     state["last_feedback"] = "Turno passato"
+    state['turn_started_at'] = datetime.utcnow().replace(tzinfo=timezone.utc).isoformat()
     save_game(game_id, state)
     return jsonify(state)
 
@@ -905,32 +672,15 @@ def api_next():
 @app.post("/api/reset_game")
 def api_reset_game():
     game_id = request.args.get("game_id", "default")
-    fresh = {
-        "game_id": game_id,
-        "created_at": datetime.utcnow().isoformat(),
-        "players": [],
-        "scores": {},
-        "current_index": 0,
-        "timer": 60,
-        "dice_pool": [],
-        "slots": [None]*13,
-        "turn_used_die_ids": [],
-        "last_feedback": "Partita azzerata"
-    }
+    fresh = default_game_state(game_id)
     save_game(game_id, fresh)
     return jsonify(fresh)
 
 
-# ---- Avvio server ----
+# ---- Avvio server locale (per test) ----
 if __name__ == "__main__":
     import logging
-
-    # Nasconde i log di ogni richiesta HTTP
     log = logging.getLogger('werkzeug')
     log.setLevel(logging.ERROR)
-
-    # Stampa solo l’indirizzo di accesso
-    print("Avvia l'app in browser: http://127.0.0.1:8000")
-
-    # Avvio server
+    print("Avvia l'app in browser: http://127.0.0.1:8000/?game_id=room1")
     app.run(host="127.0.0.1", port=8000, debug=True)
